@@ -40,15 +40,8 @@
 }
 
 - (BOOL)openChannel:(NSError *__autoreleasing *)error {
-    if (self.channel != NULL) {
-        NMSSHLogWarn(@"The channel will be closed before continue");
-        if (self.type == NMSSHChannelTypeShell) {
-            [self closeShell];
-        }
-        else {
-            [self closeChannel];
-        }
-    }
+    if (self.channel)
+        return YES;
 
     // Set blocking mode
     libssh2_session_set_blocking(self.session.rawSession, 1);
