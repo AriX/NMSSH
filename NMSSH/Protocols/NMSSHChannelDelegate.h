@@ -13,7 +13,7 @@
  @param channel The channel that read the message
  @param message The message that the channel has read
  */
-- (void)channel:(NMSSHChannel *)channel didReadData:(NSString *)message;
+- (void)channel:(NMSSHChannel *)channel didReadData:(NSData *)message;
 
 /**
  Called when a channel read new error on the socket.

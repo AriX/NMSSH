@@ -7,7 +7,7 @@
 
 @property (nonatomic, readwrite) NMSSHChannelType type;
 @property (nonatomic, assign) const char *ptyTerminalName;
-@property (nonatomic, strong) NSString *lastResponse;
+@property (nonatomic, strong) NSData *lastResponse;
 
 #if OS_OBJECT_USE_OBJC
 @property (nonatomic, strong) dispatch_source_t source;
@@ -199,6 +199,16 @@
         return nil;
     }
 
+    NSData *response = [self readResponseWithError:error timeout:timeout userInfo:userInfo];
+    if (!response)
+        return nil;
+    
+    return [[NSString alloc] initWithData:response encoding:NSUTF8StringEncoding];
+}
+
+- (NSData *)readResponseWithError:(NSError *__autoreleasing *)error timeout:(NSNumber *)timeout userInfo:(NSDictionary *)immutableUserInfo {
+    NSMutableDictionary *userInfo = [immutableUserInfo mutableCopy] ?: [NSMutableDictionary dictionary];
+
     // Set non-blocking mode
     libssh2_session_set_blocking(self.session.rawSession, 0);
 
@@ -206,7 +216,7 @@
     CFAbsoluteTime time = CFAbsoluteTimeGetCurrent() + [timeout doubleValue];
 
     // Fetch response from output buffer
-    NSMutableString *response = [[NSMutableString alloc] init];
+    NSMutableData *response = [[NSMutableData alloc] init];
     for (;;) {
         ssize_t rc;
         char buffer[self.bufferSize];
@@ -216,7 +226,7 @@
             rc = libssh2_channel_read(self.channel, buffer, (ssize_t)sizeof(buffer));
 
             if (rc > 0) {
-                [response appendFormat:@"%@", [[NSString alloc] initWithBytes:buffer length:rc encoding:NSUTF8StringEncoding]];
+                [response appendBytes:buffer length:rc];
             }
 
             // Store all errors that might occur
@@ -240,7 +250,7 @@
 
             if (libssh2_channel_eof(self.channel) == 1 || rc == 0) {
                 while ((rc  = libssh2_channel_read(self.channel, buffer, (ssize_t)sizeof(buffer))) > 0) {
-                    [response appendFormat:@"%@", [[NSString alloc] initWithBytes:buffer length:rc encoding:NSUTF8StringEncoding] ];
+                    [response appendBytes:buffer length:rc];
                 }
 
                 [self setLastResponse:[response copy]];
@@ -262,7 +272,7 @@
                 }
 
                 while ((rc  = libssh2_channel_read(self.channel, buffer, (ssize_t)sizeof(buffer))) > 0) {
-                    [response appendFormat:@"%@", [[NSString alloc] initWithBytes:buffer length:rc encoding:NSUTF8StringEncoding] ];
+                    [response appendBytes:buffer length:rc];
                 }
 
                 [self setLastResponse:[response copy]];
@@ -291,6 +301,21 @@
     [self closeChannel];
 
     return nil;
+}
+
+- (void)executeCommandAsynchronously:(NSString *)command {
+    NMSSHLogInfo(@"Exec command %@", command);
+    
+    if (![self openChannel:nil]) {
+        return;
+    }
+    
+    libssh2_channel_set_blocking(self.channel, 0);
+    
+    // Execute command
+    libssh2_channel_exec(self.channel, [command UTF8String]);
+    
+    libssh2_channel_set_blocking(self.channel, 1);
 }
 
 // -----------------------------------------------------------------------------
@@ -435,45 +460,58 @@
 }
 
 - (BOOL)writeData:(NSData *)data error:(NSError *__autoreleasing *)error timeout:(NSNumber *)timeout {
-    if (self.type != NMSSHChannelTypeShell) {
-        NMSSHLogError(@"Shell required");
+    if (![self openChannel:error]) {
         return NO;
     }
-
-    ssize_t rc;
-
+    
+    NMSSHLogVerbose(@"Writing %lu bytes", (unsigned long)[data length]);
+    __block NSError *localError = nil;
+    
     // Set the timeout
     CFAbsoluteTime time = CFAbsoluteTimeGetCurrent() + [timeout doubleValue];
-
-    // Try writing on shell
-    while ((rc = libssh2_channel_write(self.channel, [data bytes], [data length])) == LIBSSH2_ERROR_EAGAIN) {
-        // Check if the connection timed out
-        if ([timeout longValue] > 0 && time < CFAbsoluteTimeGetCurrent()) {
-            if (error) {
-                NSString *description = @"Connection timed out";
-
-                *error = [NSError errorWithDomain:@"NMSSH"
-                                             code:NMSSHChannelExecutionTimeout
-                                         userInfo:@{ NSLocalizedDescriptionKey : description }];
+    
+    [data enumerateByteRangesUsingBlock:^(const void *bytes, NSRange byteRange, BOOL *stop) {
+        ssize_t rc;
+        ssize_t written = 0, yetToBeWritten = byteRange.length;
+        
+        while (yetToBeWritten) {
+            // Try writing on shell
+            while ((rc = libssh2_channel_write(self.channel, bytes + written, yetToBeWritten)) == LIBSSH2_ERROR_EAGAIN) {
+                // Check if the connection timed out
+                if ([timeout longValue] > 0 && time < CFAbsoluteTimeGetCurrent()) {
+                    localError = [NSError errorWithDomain:@"NMSSH"
+                                                     code:NMSSHChannelExecutionTimeout
+                                                 userInfo:@{ NSLocalizedDescriptionKey : @"Connection timed out" }];
+                    if (stop)
+                        *stop = YES;
+                    return;
+                }
+                
+                waitsocket(CFSocketGetNative([self.session socket]), self.session.rawSession);
             }
-
-            return NO;
+            
+            if (rc < 0) {
+                NMSSHLogError(@"Error writing");
+                localError = [NSError errorWithDomain:@"NMSSH"
+                                                 code:NMSSHChannelWriteError
+                                             userInfo:@{ NSLocalizedDescriptionKey : [[self.session lastError] localizedDescription]}];
+                if (stop)
+                    *stop = YES;
+                return;
+            }
+            
+            written += rc;
+            yetToBeWritten -= rc;
         }
-
-        waitsocket(CFSocketGetNative([self.session socket]), self.session.rawSession);
+    }];
+    
+    if (localError) {
+        if (error)
+            *error = localError;
+        
+        return NO;
     }
-
-    if (rc < 0) {
-        NMSSHLogError(@"Error writing on the shell");
-        if (error) {
-            NSString *command = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-            *error = [NSError errorWithDomain:@"NMSSH"
-                                         code:NMSSHChannelWriteError
-                                     userInfo:@{ NSLocalizedDescriptionKey : [[self.session lastError] localizedDescription],
-                                                 @"command"                : command }];
-        }
-    }
-
+    
     return YES;
 }
 

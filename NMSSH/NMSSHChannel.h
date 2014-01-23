@@ -70,7 +70,7 @@ typedef NS_ENUM(NSInteger, NMSSHChannelType)  {
 /// ----------------------------------------------------------------------------
 
 /** The last response from a shell command execution */
-@property (nonatomic, readonly) NSString *lastResponse;
+@property (nonatomic, readonly) NSData *lastResponse;
 
 /** Request a pseudo terminal before executing a command */
 @property (nonatomic, assign) BOOL requestPty;
@@ -105,6 +105,25 @@ typedef NS_ENUM(NSInteger, NMSSHChannelType)  {
  */
 - (NSString *)execute:(NSString *)command error:(NSError **)error timeout:(NSNumber *)timeout;
 
+/**
+ Reads data from stdout on the server with a given timeout.
+ 
+ If an error occurs or the connection timed out, it will return `nil` and populate the error object.
+ 
+ @param error Error handler
+ @param timeout The time to wait (in seconds) before giving up on the request
+ @param userInfo An optional userInfo dictionary to be included in returned error objects
+ @returns Shell command response
+ */
+- (NSData *)readResponseWithError:(NSError *__autoreleasing *)error timeout:(NSNumber *)timeout userInfo:(NSDictionary *)userInfo;
+
+/**
+ Execute a shell command asynchronously on the server.
+ 
+ @param command Any shell script that is available on the server
+ */
+- (void)executeCommandAsynchronously:(NSString *)command;
+
 /// ----------------------------------------------------------------------------
 /// @name Remote shell session
 /// ----------------------------------------------------------------------------
@@ -125,30 +144,36 @@ typedef NS_ENUM(NSInteger, NMSSHChannelType)  {
 - (BOOL)startShell:(NSError **)error;
 
 /**
+ Send end-of-file to the remote server and wait until it is acknowledged.
+ */
+- (BOOL)sendEOF;
+- (void)waitEOF;
+
+/**
  Close a remote shell on an active channel.
  */
 - (void)closeShell;
 
 /**
- Write a command on the remote shell.
+ Write a command on the remote stdin.
 
  If an error occurs or the connection timed out, it will return NO and populate the error object.
 
  @param command Any command that is available on the server
  @param error Error handler
- @returns Shell write success
+ @returns Write success
  */
 - (BOOL)write:(NSString *)command error:(NSError **)error;
 
 /**
- Write a command on the remote shell with a given timeout.
+ Write a command on the remote stdin with a given timeout.
 
  If an error occurs or the connection timed out, it will return NO and populate the error object.
 
  @param command Any command that is available on the server
  @param error Error handler
  @param timeout The time to wait (in seconds) before giving up on the request
- @returns Shell write success
+ @returns Write success
  */
 - (BOOL)write:(NSString *)command error:(NSError **)error timeout:(NSNumber *)timeout;
 
