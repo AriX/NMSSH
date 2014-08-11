@@ -575,7 +575,7 @@
 			isa = PBXProject;
 			attributes = {
 				CLASSPREFIX = NMSSH;
-				LastUpgradeCheck = 0510;
+				LastUpgradeCheck = 0600;
 				ORGANIZATIONNAME = "Nine Muses AB";
 			};
 			buildConfigurationList = 18A0962617D6A85F008B76FB /* Build configuration list for PBXProject "NMSSH-iOS" */;
@@ -733,6 +733,7 @@
 				MACOSX_DEPLOYMENT_TARGET = "";
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				WRAPPER_EXTENSION = framework;
 			};
 			name = Debug;
@@ -759,6 +760,7 @@
 				MACOSX_DEPLOYMENT_TARGET = "";
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				WRAPPER_EXTENSION = framework;
 			};
 			name = Release;
