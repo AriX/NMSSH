@@ -575,7 +575,7 @@
 			isa = PBXProject;
 			attributes = {
 				CLASSPREFIX = NMSSH;
-				LastUpgradeCheck = 0600;
+				LastUpgradeCheck = 0720;
 				ORGANIZATIONNAME = "Nine Muses AB";
 			};
 			buildConfigurationList = 18A0962617D6A85F008B76FB /* Build configuration list for PBXProject "NMSSH-iOS" */;
@@ -670,6 +670,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
+				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_OPTIMIZATION_LEVEL = 0;
